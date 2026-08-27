@@ -315,6 +315,9 @@ def detect_risk(df: pd.DataFrame) -> pd.DataFrame:
     df_out["detected_recoverable"] = recoverable_flags
     df_out["detected_priority"] = priorities
 
+    for row in df_out.itertuples(index=False):
+        validate_decision_output(row)
+
     return df_out
 
 
@@ -322,12 +325,30 @@ def detect_risk(df: pd.DataFrame) -> pd.DataFrame:
 # 5. Opportunity Object Creation
 # ──────────────────────────────────────────────────────────────────────────────
 
+def validate_decision_output(row: Any) -> None:
+    """Validate runtime decision fields and success invariants."""
+    if row.detected_priority not in ALLOWED_PRIORITIES:
+        raise ValueError(f"Invalid priority: {row.detected_priority}")
+    if row.detected_action not in ALLOWED_ACTIONS:
+        raise ValueError(f"Invalid recommended action: {row.detected_action}")
+    if not isinstance(row.detected_recoverable, (bool, np.bool_)):
+        raise ValueError("Recoverable must be a boolean")
+    if row.status == "SUCCESS":
+        if row.detected_priority != "NONE":
+            raise ValueError("Successful transactions must have NONE priority")
+        if row.detected_action != "NO_ACTION":
+            raise ValueError("Successful transactions must have NO_ACTION")
+
 def create_opportunity(row: Any, opp_idx: int) -> Dict[str, Any]:
     """
     Convert a detected failed transaction into a standardized Opportunity object.
     """
+    validate_decision_output(row)
+    if row.status != "FAILED":
+        raise ValueError("Only failed transactions can become opportunities")
+
     return {
-        "opportunityId": f"OPP_{opp_idx:06d}",
+        "opportunityId": f"OPP_{row.transaction_id}",
         "transactionId": row.transaction_id,
         "customerId": row.customer_id,
         "amount": round(float(row.amount), 2),
@@ -352,6 +373,10 @@ def create_opportunities(detected_df: pd.DataFrame) -> List[Dict[str, Any]]:
     # Only failed transactions requiring action become opportunities
     failed_mask = (detected_df["status"] == "FAILED") & (detected_df["detected_action"] != "NO_ACTION")
     failed_df = detected_df[failed_mask].reset_index(drop=True)
+
+    transaction_ids = failed_df["transaction_id"]
+    if transaction_ids.duplicated().any():
+        raise ValueError("Failed transactions must have unique transaction_id values")
 
     opportunities = []
     for idx, row in enumerate(failed_df.itertuples(index=False), start=1):
