@@ -114,6 +114,7 @@ const transactionSchema = new mongoose.Schema(
 );
 
 // Compound index for common analytics queries
+transactionSchema.index({ timestamp: -1 });
 transactionSchema.index({ status: 1, timestamp: -1 });
 transactionSchema.index({ customer_id: 1, timestamp: -1 });
 transactionSchema.index({ provider: 1, status: 1 });

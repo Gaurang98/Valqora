@@ -3,6 +3,8 @@ const cors = require('cors');
 const healthRoutes = require('./routes/health');
 const uploadRoutes = require('./routes/upload');
 const transactionRoutes = require('./routes/transactions');
+const dashboardRoutes = require('./routes/dashboard');
+const opportunityRoutes = require('./routes/opportunities');
 
 const app = express();
 
@@ -15,6 +17,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/health', healthRoutes);
 app.use('/api/data/upload', uploadRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/opportunities', opportunityRoutes);
 
 // Fallback for undefined routes
 app.use((req, res) => {

@@ -35,6 +35,7 @@ exports.getTransactions = async (req, res) => {
         .sort({ timestamp: -1 })  // most-recent first
         .skip(skip)
         .limit(limit)
+        .allowDiskUse(true)
         .lean(),
       Transaction.countDocuments({}),
     ]);
