@@ -1,0 +1,141 @@
+{
+  "dataset_warning": "Synthetic target is generated from deterministic business rules; model metrics demonstrate pipeline functionality, not production predictive performance.",
+  "dataset": {
+    "path": "C:\\Users\\hp\\OneDrive\\Desktop\\Project\\Valqora\\data\\transactions.csv",
+    "shape": [
+      100000,
+      16
+    ],
+    "failed_rows_used": 6719,
+    "total_rows": 100000,
+    "target_values": {
+      "0": 448,
+      "1": 6271
+    }
+  },
+  "features": [
+    "amount",
+    "retry_count",
+    "customer_lifetime_value",
+    "previous_failures",
+    "hour",
+    "day_of_week",
+    "day_of_month",
+    "month",
+    "currency",
+    "payment_method",
+    "provider",
+    "failure_reason",
+    "customer_type"
+  ],
+  "target_definition": {
+    "name": "potential_recovery",
+    "mapping": {
+      "YES": 1,
+      "POSSIBLY": 1,
+      "NO": 0
+    }
+  },
+  "train_test": {
+    "test_size": 0.2,
+    "random_state": 42,
+    "stratified": true,
+    "train_rows": 5375,
+    "test_rows": 1344,
+    "train_target_distribution": {
+      "0": 358,
+      "1": 5017
+    },
+    "test_target_distribution": {
+      "0": 90,
+      "1": 1254
+    }
+  },
+  "metrics": [
+    {
+      "model": "Logistic Regression",
+      "accuracy": 0.9933035714285714,
+      "precision": 1.0,
+      "recall": 0.992822966507177,
+      "f1": 0.9963985594237695,
+      "roc_auc": 0.9999113946482368,
+      "confusion_matrix": [
+        [
+          90,
+          0
+        ],
+        [
+          9,
+          1245
+        ]
+      ]
+    },
+    {
+      "model": "Random Forest",
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "roc_auc": 1.0,
+      "confusion_matrix": [
+        [
+          90,
+          0
+        ],
+        [
+          0,
+          1254
+        ]
+      ]
+    }
+  ],
+  "selected_model": "Random Forest",
+  "top_features": [
+    {
+      "feature": "num__retry_count",
+      "importance": 0.4014164123251957
+    },
+    {
+      "feature": "cat__failure_reason_SUSPICIOUS_TRANSACTION",
+      "importance": 0.33369431152998597
+    },
+    {
+      "feature": "cat__failure_reason_INSUFFICIENT_FUNDS",
+      "importance": 0.042260251631755966
+    },
+    {
+      "feature": "cat__failure_reason_BANK_TIMEOUT",
+      "importance": 0.03331432452744061
+    },
+    {
+      "feature": "cat__failure_reason_PROVIDER_TIMEOUT",
+      "importance": 0.023676905452475798
+    },
+    {
+      "feature": "num__amount",
+      "importance": 0.017310907276573057
+    },
+    {
+      "feature": "num__customer_lifetime_value",
+      "importance": 0.016683634318301492
+    },
+    {
+      "feature": "cat__failure_reason_PAYMENT_METHOD_EXPIRED",
+      "importance": 0.01657165104751243
+    },
+    {
+      "feature": "cat__failure_reason_NETWORK_ERROR",
+      "importance": 0.01646945391591981
+    },
+    {
+      "feature": "cat__failure_reason_RECURRING_PAYMENT_FAILED",
+      "importance": 0.016259271845975868
+    }
+  ],
+  "leakage_checks": {
+    "forbidden_columns_absent_from_X": true,
+    "target_classes_valid": true,
+    "train_test_stratified": true
+  },
+  "model_artifact": "C:\\Users\\hp\\OneDrive\\Desktop\\Project\\Valqora\\ml\\models\\recovery_model.joblib"
+}
