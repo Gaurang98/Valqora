@@ -1,4 +1,5 @@
 const Transaction = require('../models/Transaction');
+const { investigateOpportunity, investigateTransactionById } = require('../services/aiService');
 
 const TEMPORARY_FAILURES = new Set(['BANK_TIMEOUT', 'PROVIDER_TIMEOUT', 'NETWORK_ERROR']);
 const PAYMENT_METHOD_FAILURES = new Set(['CARD_EXPIRED', 'PAYMENT_METHOD_EXPIRED', 'INVALID_CARD']);
@@ -117,5 +118,32 @@ exports.getOpportunities = async (req, res) => {
   } catch (err) {
     console.error('[getOpportunities] Unexpected error:', err.message);
     return res.status(500).json({ error: 'An unexpected server error occurred while fetching opportunities.' });
+  }
+};
+
+exports.investigateOpportunityHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let result;
+
+    if (id) {
+      const cleanTxnId = id.startsWith('OPP_') ? id.replace(/^OPP_/, '') : id;
+      result = await investigateTransactionById(cleanTxnId);
+    } else if (req.body && Object.keys(req.body).length > 0) {
+      result = await investigateOpportunity(req.body);
+    } else {
+      return res.status(400).json({ error: 'Transaction ID in URL parameter or transaction payload in request body is required' });
+    }
+
+    return res.status(200).json({ data: result });
+  } catch (err) {
+    if (err.message && err.message.includes('not found')) {
+      return res.status(404).json({ error: err.message });
+    }
+    if (err.message && err.message.includes('Successful transactions cannot be investigated')) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error('[investigateOpportunityHandler] Error:', err.message);
+    return res.status(500).json({ error: err.message || 'AI investigation failed' });
   }
 };
