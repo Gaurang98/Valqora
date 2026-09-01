@@ -34,6 +34,12 @@ const navItems = [
     badge: '10'
   },
   {
+    name: 'Human Review',
+    path: '/human-review',
+    icon: Shield,
+    badge: '3'
+  },
+  {
     name: 'Decision Trace',
     path: '/decisions',
     icon: GitFork,

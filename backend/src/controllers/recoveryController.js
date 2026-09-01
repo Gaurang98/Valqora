@@ -6,6 +6,14 @@ const {
 } = require('../services/recoverySimulator');
 const { verifyRecovery } = require('../services/verificationService');
 const { calculateRecoveryMetrics } = require('../services/recoveryMetricsService');
+const {
+  createReview,
+  isReviewEligible,
+  getReview,
+  approveReview,
+  rejectReview,
+  listReviews,
+} = require('../services/humanReviewService');
 const { normalizeOpportunityId } = require('./investigationController');
 
 function buildPolicyInput(decision, context) {
@@ -203,5 +211,91 @@ exports.getRecoveryMetricsHandler = async (req, res) => {
       success: false,
       error: 'An unexpected server error occurred while calculating recovery metrics',
     });
+  }
+};
+
+exports.createHumanReviewHandler = async (req, res) => {
+  try {
+    const rawId = req.params.opportunityId || req.body?.opportunityId;
+    const normalizedTxnId = normalizeOpportunityId(rawId);
+    if (!normalizedTxnId) {
+      return res.status(400).json({ success: false, error: 'Valid opportunity ID is required' });
+    }
+
+    const investigationResult = await investigateTransactionById(normalizedTxnId);
+    const policyInput = buildPolicyInput(investigationResult.decision, investigationResult.context);
+    const policy = evaluatePolicy(policyInput);
+
+    if (policy.decision === 'APPROVED') {
+      return res.status(200).json({
+        success: true,
+        review: null,
+        message: 'This opportunity does not require human review',
+      });
+    }
+
+    if (policy.decision === 'BLOCKED' && !isReviewEligible(policy)) {
+      return res.status(200).json({
+        success: true,
+        review: null,
+        status: 'BLOCKED',
+        message: 'This action remains blocked by policy and cannot be reviewed for automatic recovery',
+      });
+    }
+
+    const review = createReview({
+      opportunityId: investigationResult.opportunityId || normalizedTxnId,
+      transactionId: investigationResult.transactionId || normalizedTxnId,
+      amount: investigationResult.context?.amount || 0,
+      reason: policy.reason || 'Manual review required',
+      aiRecommendation: investigationResult.decision?.recommendedAction || 'HUMAN_REVIEW',
+      aiConfidence: Number(investigationResult.decision?.confidence ?? 0),
+      policyDecision: policy,
+    });
+
+    return res.status(200).json({ success: true, review });
+  } catch (err) {
+    const msg = err.message || '';
+    if (msg.includes('not found')) {
+      return res.status(404).json({ success: false, error: msg });
+    }
+    return res.status(500).json({ success: false, error: 'An unexpected server error occurred while creating a human review' });
+  }
+};
+
+exports.listHumanReviewsHandler = async (req, res) => {
+  try {
+    const status = req.query?.status;
+    return res.status(200).json({ success: true, reviews: listReviews(status) });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'An unexpected server error occurred while listing reviews' });
+  }
+};
+
+exports.approveHumanReviewHandler = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    if (!reviewId) {
+      return res.status(400).json({ success: false, error: 'Review ID is required' });
+    }
+
+    const review = approveReview(reviewId);
+    return res.status(200).json({ success: true, review, message: 'Review approved' });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: err.message || 'Review approval failed' });
+  }
+};
+
+exports.rejectHumanReviewHandler = async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    if (!reviewId) {
+      return res.status(400).json({ success: false, error: 'Review ID is required' });
+    }
+
+    const review = rejectReview(reviewId);
+    return res.status(200).json({ success: true, review, message: 'Review rejected' });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: err.message || 'Review rejection failed' });
   }
 };
