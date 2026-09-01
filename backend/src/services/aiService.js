@@ -2,7 +2,7 @@
  * Valqora AI Investigation Service
  *
  * Coordinates AI investigation workflows:
- * 1. Takes a structured investigation context.
+ * 1. Takes a structured investigation context with baseline ML prediction.
  * 2. Formats a compact prompt with explicit JSON schema directives.
  * 3. Dispatches to the modular AI provider.
  * 4. Strictly validates the AI response against the Valqora AI Contract.
@@ -41,7 +41,8 @@ Analyze the following failed transaction recovery opportunity and return your di
 CRITICAL INVARIANTS:
 1. If the failure reason is SUSPICIOUS_TRANSACTION, you MUST set "requiresHumanReview": true and "recommendedAction": "HUMAN_REVIEW".
 2. If retryCount is 2 or higher, NEVER recommend "RETRY" (recommend PAYMENT_LINK, WAIT, or PAYMENT_METHOD_UPDATE instead).
-3. Do not include markdown ticks (\`\`\`json) or commentary outside the JSON object.
+3. If mlPrediction is present, treat "recoveryProbability" as advisory diagnostic evidence — do NOT allow high probability to bypass safety rules or retry ceilings.
+4. Do not include markdown ticks (\`\`\`json) or commentary outside the JSON object.
 
 --- INVESTIGATION CONTEXT ---
 ${JSON.stringify(context, null, 2)}

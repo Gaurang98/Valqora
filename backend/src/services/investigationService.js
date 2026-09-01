@@ -9,16 +9,18 @@
  */
 
 const Transaction = require('../models/Transaction');
+const { predictRecoveryProbability } = require('./ml/recoveryModel');
 
 /**
- * Synthesizes factual, leakage-free evidence bullet points from the transaction
- * and provider telemetry.
+ * Synthesizes factual, leakage-free evidence bullet points from the transaction,
+ * provider telemetry, and baseline ML prediction.
  *
  * @param {Object} txn - Sanitized transaction details
  * @param {Object} [providerStats] - Optional provider telemetry
+ * @param {Object} [mlPrediction] - Optional ML prediction result
  * @returns {string[]} Array of factual evidence statements
  */
-function extractEvidence(txn, providerStats = null) {
+function extractEvidence(txn, providerStats = null, mlPrediction = null) {
   const evidence = [];
 
   // Failure reason evidence
@@ -84,6 +86,17 @@ function extractEvidence(txn, providerStats = null) {
     }
   }
 
+  // ML recovery prediction evidence
+  if (mlPrediction && mlPrediction.isAvailable && typeof mlPrediction.recoveryProbability === 'number') {
+    evidence.push(
+      `Baseline ML recovery probability: ${(mlPrediction.recoveryProbability * 100).toFixed(1)}% (${mlPrediction.model || 'RandomForestClassifier'})`
+    );
+  } else if (mlPrediction && mlPrediction.isAvailable === false) {
+    evidence.push(
+      `Baseline ML recovery prediction: unavailable (${mlPrediction.reason || 'offline'})`
+    );
+  }
+
   return evidence;
 }
 
@@ -92,9 +105,10 @@ function extractEvidence(txn, providerStats = null) {
  *
  * @param {Object} rawTxn - Plain transaction object or Mongoose document
  * @param {Object} [providerStats] - Optional provider telemetry
+ * @param {Object} [customMlPrediction] - Optional precomputed ML prediction
  * @returns {Object} Compact investigation context
  */
-function buildInvestigationContext(rawTxn, providerStats = null) {
+function buildInvestigationContext(rawTxn, providerStats = null, customMlPrediction = null) {
   if (!rawTxn || typeof rawTxn !== 'object') {
     throw new Error('Transaction data is required to build investigation context');
   }
@@ -142,6 +156,21 @@ function buildInvestigationContext(rawTxn, providerStats = null) {
     }
   }
 
+  // Execute isolated ML recovery prediction
+  let mlPrediction = customMlPrediction;
+  if (!mlPrediction) {
+    try {
+      mlPrediction = predictRecoveryProbability(txn);
+    } catch (err) {
+      mlPrediction = {
+        recoveryProbability: null,
+        isAvailable: false,
+        model: 'RandomForestClassifier',
+        reason: err.message,
+      };
+    }
+  }
+
   // Generate evidence bullet points
   const evidence = extractEvidence(
     {
@@ -152,7 +181,8 @@ function buildInvestigationContext(rawTxn, providerStats = null) {
       previous_failures: prevFailures,
       provider: providerName,
     },
-    providerStats
+    providerStats,
+    mlPrediction
   );
 
   // Return strictly sanitized and compact context
@@ -175,6 +205,12 @@ function buildInvestigationContext(rawTxn, providerStats = null) {
       retryCount,
     },
     provider: providerInfo,
+    mlPrediction: {
+      recoveryProbability: mlPrediction.recoveryProbability,
+      isAvailable: Boolean(mlPrediction.isAvailable),
+      model: mlPrediction.model || 'RandomForestClassifier',
+      ...(mlPrediction.reason ? { reason: mlPrediction.reason } : {}),
+    },
     evidence,
   };
 }

@@ -32,7 +32,7 @@ class BaseAiProvider {
  */
 class MockAiProvider extends BaseAiProvider {
   async generateDecision(prompt, context) {
-    const { amount, customer, failure, provider } = context;
+    const { amount, customer, failure, provider, mlPrediction } = context;
     const reason = failure?.reason || 'UNKNOWN';
     const retryCount = failure?.retryCount ?? 0;
     const customerType = customer?.customerType || 'REGULAR';
@@ -63,6 +63,11 @@ class MockAiProvider extends BaseAiProvider {
         'Potential unauthorized card usage or synthetic identity fraud',
         'Automated retry would increase chargeback liability',
       ];
+      if (mlPrediction && mlPrediction.isAvailable && typeof mlPrediction.recoveryProbability === 'number') {
+        reasoning.push(
+          `Supervised recovery model output (${(mlPrediction.recoveryProbability * 100).toFixed(1)}%) is superseded by fraud risk override`
+        );
+      }
     } else if (reason === 'BANK_TIMEOUT' || reason === 'PROVIDER_TIMEOUT' || reason === 'NETWORK_ERROR') {
       rootCause = `Transient infrastructure failure (${reason}) on ${provider?.name || 'payment gateway'}`;
       recoverability = 'HIGH';
@@ -90,6 +95,12 @@ class MockAiProvider extends BaseAiProvider {
             : 'Cooling-off wait period recommended before customer-facing follow-up',
         ];
         riskFactors.push('Exhausted automated retries; customer intervention needed');
+      }
+
+      if (mlPrediction && mlPrediction.isAvailable && typeof mlPrediction.recoveryProbability === 'number') {
+        reasoning.push(
+          `Statistical recovery probability of ${(mlPrediction.recoveryProbability * 100).toFixed(1)}% confirms high recovery viability`
+        );
       }
 
       if (prevFailures >= 3) {
