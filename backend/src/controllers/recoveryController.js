@@ -4,6 +4,7 @@ const {
   mapPolicyActionToRecoveryAction,
   simulateRecoveryAction,
 } = require('../services/recoverySimulator');
+const { verifyRecovery } = require('../services/verificationService');
 const { normalizeOpportunityId } = require('./investigationController');
 
 function buildPolicyInput(decision, context) {
@@ -54,6 +55,15 @@ exports.executeRecoveryHandler = async (req, res) => {
           amountRecovered: 0,
           message: 'Recovery action blocked by policy',
         },
+        verification: {
+          verified: false,
+          status: 'BLOCKED',
+          action: 'BLOCKED',
+          previousStatus: String(investigationResult.context?.status || 'FAILED').toUpperCase(),
+          currentStatus: String(investigationResult.context?.status || 'FAILED').toUpperCase(),
+          amountRecovered: 0,
+          message: 'Recovery action blocked by policy',
+        },
         policy,
       });
     }
@@ -66,13 +76,25 @@ exports.executeRecoveryHandler = async (req, res) => {
         transaction_id: investigationResult.context.transactionId,
         amount: investigationResult.context.amount,
         retry_count: investigationResult.context.failure.retryCount,
+        status: investigationResult.context.status,
       },
+      policyDecision: policy,
+    });
+
+    const verification = verifyRecovery({
+      transaction: {
+        status: investigationResult.context?.status || 'FAILED',
+        amount: investigationResult.context?.amount,
+      },
+      action: recoveryAction,
+      simulation,
       policyDecision: policy,
     });
 
     return res.status(200).json({
       success: true,
       simulation,
+      verification,
       policy,
     });
   } catch (err) {
