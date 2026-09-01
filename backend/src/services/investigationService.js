@@ -8,8 +8,52 @@
  * are strictly isolated and never included in the investigation context.
  */
 
+const fs = require('fs');
+const path = require('path');
+const mongoose = require('mongoose');
 const Transaction = require('../models/Transaction');
 const { predictRecoveryProbability } = require('./ml/recoveryModel');
+
+const REPO_ROOT = path.resolve(__dirname, '../../../');
+const TRANSACTIONS_CSV = path.join(REPO_ROOT, 'data', 'transactions.csv');
+
+/**
+ * Searches data/transactions.csv for a transaction ID when MongoDB is offline.
+ *
+ * @param {string[]} candidateIds - List of candidate transaction IDs
+ * @returns {Object|null} Parsed transaction object or null
+ */
+function findTransactionInCsv(candidateIds) {
+  if (!fs.existsSync(TRANSACTIONS_CSV)) return null;
+
+  const content = fs.readFileSync(TRANSACTIONS_CSV, 'utf8');
+  const lines = content.split('\n');
+  if (lines.length < 2) return null;
+
+  const headers = lines[0].split(',').map((h) => h.trim());
+  const candidateSet = new Set(candidateIds);
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const values = line.split(',').map((v) => v.trim());
+    const txnId = values[0]; // transaction_id is first column
+
+    if (candidateSet.has(txnId)) {
+      const obj = {};
+      headers.forEach((h, idx) => {
+        obj[h] = values[idx];
+      });
+      obj.amount = Number(obj.amount);
+      obj.retry_count = Number(obj.retry_count);
+      obj.customer_lifetime_value = Number(obj.customer_lifetime_value);
+      obj.previous_failures = Number(obj.previous_failures);
+      return obj;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Synthesizes factual, leakage-free evidence bullet points from the transaction,
@@ -216,67 +260,88 @@ function buildInvestigationContext(rawTxn, providerStats = null, customMlPredict
 }
 
 /**
- * Builds an investigation context by retrieving transaction and provider telemetry from MongoDB.
+ * Builds an investigation context by retrieving transaction and provider telemetry from MongoDB or CSV.
+ * Supports lookups by transaction_id, OPP_ prefix, or bare opportunity numbers.
  *
- * @param {string} transactionId - The transaction ID to investigate
+ * @param {string} rawId - The opportunity or transaction ID to investigate
  * @returns {Promise<Object>} Compact investigation context
  */
-async function buildInvestigationContextFromDb(transactionId) {
-  if (!transactionId || typeof transactionId !== 'string') {
-    throw new Error('Valid transactionId string is required');
+async function buildInvestigationContextFromDb(rawId) {
+  if (!rawId || typeof rawId !== 'string') {
+    throw new Error('Valid opportunity ID or transaction ID string is required');
   }
 
-  const transaction = await Transaction.findOne({ transaction_id: transactionId.trim() })
-    .select('transaction_id customer_id amount currency payment_method timestamp provider status failure_reason retry_count customer_type customer_lifetime_value previous_failures')
-    .lean();
+  const trimmed = rawId.trim();
+  const candidates = [
+    trimmed,
+    trimmed.replace(/^OPP_/, ''),
+    trimmed.startsWith('TXN_') ? trimmed : `TXN_${trimmed.replace(/^OPP_/, '')}`,
+    `OPP_${trimmed}`,
+  ];
+
+  let transaction = null;
+
+  // 1. If MongoDB is connected, query the collection
+  if (mongoose.connection && mongoose.connection.readyState === 1) {
+    transaction = await Transaction.findOne({
+      transaction_id: { $in: candidates },
+    })
+      .select('transaction_id customer_id amount currency payment_method timestamp provider status failure_reason retry_count customer_type customer_lifetime_value previous_failures')
+      .lean();
+  } else {
+    // 2. Offline fallback: lookup in transactions.csv
+    transaction = findTransactionInCsv(candidates);
+  }
 
   if (!transaction) {
-    throw new Error(`Transaction with ID ${transactionId} not found`);
+    throw new Error(`Opportunity / Transaction with ID "${rawId}" not found`);
   }
 
   if (transaction.status === 'SUCCESS') {
     throw new Error('Successful transactions cannot be investigated as recovery opportunities');
   }
 
-  // Calculate recent provider health if transactions exist
+  // Calculate recent provider health if MongoDB connected
   let providerStats = null;
-  try {
-    const [providerAgg, baselineAgg] = await Promise.all([
-      Transaction.aggregate([
-        { $match: { provider: transaction.provider } },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            success: { $sum: { $cond: [{ $eq: ['$status', 'SUCCESS'] }, 1, 0] } },
+  if (mongoose.connection && mongoose.connection.readyState === 1) {
+    try {
+      const [providerAgg, baselineAgg] = await Promise.all([
+        Transaction.aggregate([
+          { $match: { provider: transaction.provider } },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: 1 },
+              success: { $sum: { $cond: [{ $eq: ['$status', 'SUCCESS'] }, 1, 0] } },
+            },
           },
-        },
-      ]),
-      Transaction.aggregate([
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            success: { $sum: { $cond: [{ $eq: ['$status', 'SUCCESS'] }, 1, 0] } },
+        ]),
+        Transaction.aggregate([
+          {
+            $group: {
+              _id: null,
+              total: { $sum: 1 },
+              success: { $sum: { $cond: [{ $eq: ['$status', 'SUCCESS'] }, 1, 0] } },
+            },
           },
-        },
-      ]),
-    ]);
+        ]),
+      ]);
 
-    if (providerAgg.length > 0 && baselineAgg.length > 0) {
-      const pTotal = providerAgg[0].total;
-      const pSucc = providerAgg[0].success;
-      const bTotal = baselineAgg[0].total;
-      const bSucc = baselineAgg[0].success;
+      if (providerAgg.length > 0 && baselineAgg.length > 0) {
+        const pTotal = providerAgg[0].total;
+        const pSucc = providerAgg[0].success;
+        const bTotal = baselineAgg[0].total;
+        const bSucc = baselineAgg[0].success;
 
-      providerStats = {
-        name: transaction.provider,
-        currentSuccessRate: pTotal > 0 ? (pSucc / pTotal) * 100 : 0,
-        baselineSuccessRate: bTotal > 0 ? (bSucc / bTotal) * 100 : 0,
-      };
+        providerStats = {
+          name: transaction.provider,
+          currentSuccessRate: pTotal > 0 ? (pSucc / pTotal) * 100 : 0,
+          baselineSuccessRate: bTotal > 0 ? (bSucc / bTotal) * 100 : 0,
+        };
+      }
+    } catch (err) {
+      // Non-fatal: continue with basic provider info if aggregation fails
     }
-  } catch (err) {
-    // Non-fatal: continue with basic provider info if aggregation fails
   }
 
   return buildInvestigationContext(transaction, providerStats);

@@ -5,6 +5,7 @@ const uploadRoutes = require('./routes/upload');
 const transactionRoutes = require('./routes/transactions');
 const dashboardRoutes = require('./routes/dashboard');
 const opportunityRoutes = require('./routes/opportunities');
+const investigationRoutes = require('./routes/investigations');
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use('/api/data/upload', uploadRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/opportunities', opportunityRoutes);
+app.use('/api/investigations', investigationRoutes);
 
 // Fallback for undefined routes
 app.use((req, res) => {
