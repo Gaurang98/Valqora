@@ -15,6 +15,7 @@ const {
   listReviews,
 } = require('../services/humanReviewService');
 const { normalizeOpportunityId } = require('./investigationController');
+const { buildDecisionTrace } = require('../services/decisionTraceService');
 
 function buildPolicyInput(decision, context) {
   const failureReason = context?.failure?.reason || context?.failure_reason || 'UNKNOWN';
@@ -119,6 +120,56 @@ exports.executeRecoveryHandler = async (req, res) => {
       success: false,
       error: 'An unexpected server error occurred while simulating recovery',
     });
+  }
+};
+
+exports.getRecoveryTraceHandler = async (req, res) => {
+  try {
+    const rawId = req.params.opportunityId || req.query?.opportunityId;
+    const normalizedTxnId = normalizeOpportunityId(rawId);
+
+    if (!normalizedTxnId) {
+      return res.status(400).json({ success: false, error: 'Valid opportunity ID is required' });
+    }
+
+    const { investigateTransactionById } = require('../services/aiService');
+    const { evaluatePolicy } = require('../services/policyEngine');
+    const { listReviews } = require('../services/humanReviewService');
+
+    const investigationResult = await investigateTransactionById(normalizedTxnId);
+    const policyInput = buildPolicyInput(investigationResult.decision, investigationResult.context);
+    const policy = evaluatePolicy(policyInput);
+    const opportunityId = investigationResult.context?.opportunityId || normalizedTxnId;
+    const transactionId = investigationResult.context?.transactionId || normalizedTxnId;
+
+    const reviewList = listReviews();
+    const review = reviewList.find((entry) => entry.transactionId === transactionId || entry.opportunityId === opportunityId) || null;
+
+    const trace = buildDecisionTrace({
+      opportunityId,
+      transactionId,
+      amount: investigationResult.context?.amount || 0,
+      investigation: {
+        ...investigationResult.context,
+        aiDecision: investigationResult.decision,
+      },
+      policy,
+      review,
+      metrics: { revenueRecovered: 0 },
+      riskDetected: 'Revenue risk detected for failed transaction review',
+    });
+
+    return res.status(200).json({ success: true, trace });
+  } catch (err) {
+    const msg = err.message || '';
+    if (msg.includes('not found')) {
+      return res.status(404).json({ success: false, error: msg });
+    }
+    if (msg.includes('Successful transactions cannot be investigated')) {
+      return res.status(400).json({ success: false, error: msg });
+    }
+    console.error('[getRecoveryTraceHandler] Error:', msg);
+    return res.status(500).json({ success: false, error: 'An unexpected server error occurred while building the decision trace' });
   }
 };
 

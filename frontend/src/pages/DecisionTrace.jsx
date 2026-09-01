@@ -20,7 +20,10 @@ import { PriorityBadge, StatusBadge } from '../components/ui/Badge';
 
 export default function DecisionTrace() {
   const [selectedTraceId, setSelectedTraceId] = useState(mockDecisionTraces[0].id);
-  const trace = mockDecisionTraces.find(t => t.id === selectedTraceId) || mockDecisionTraces[0];
+  const [liveTrace, setLiveTrace] = useState(null);
+  const trace = liveTrace || mockDecisionTraces.find(t => t.id === selectedTraceId) || mockDecisionTraces[0];
+
+  const traceEvents = liveTrace?.events || trace.steps || [];
 
   return (
     <div className="space-y-6">
@@ -52,7 +55,10 @@ export default function DecisionTrace() {
             {mockDecisionTraces.map(t => (
               <button
                 key={t.id}
-                onClick={() => setSelectedTraceId(t.id)}
+                onClick={() => {
+                  setLiveTrace(null);
+                  setSelectedTraceId(t.id);
+                }}
                 className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition ${
                   selectedTraceId === t.id
                     ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
@@ -122,15 +128,16 @@ export default function DecisionTrace() {
             {/* Connecting Vertical Line */}
             <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-slate-800" />
 
-            {trace.steps.map((s, idx) => {
-              const isLast = idx === trace.steps.length - 1;
-              const isHighlight = s.status === 'highlight';
-              const isRisk = s.status === 'risk';
-              const isPolicy = s.status === 'policy';
-              const isSuccess = s.status === 'success';
+            {traceEvents.map((s, idx) => {
+              const isLast = idx === traceEvents.length - 1;
+              const statusKey = String(s.status || '').toLowerCase();
+              const isHighlight = statusKey === 'highlight' || statusKey === 'completed' || statusKey === 'approved';
+              const isRisk = statusKey === 'risk' || statusKey === 'blocked' || statusKey === 'failed';
+              const isPolicy = statusKey === 'policy' || statusKey === 'human_review' || statusKey === 'pending';
+              const isSuccess = statusKey === 'success' || statusKey === 'verified';
 
               return (
-                <div key={s.step} className="relative flex items-start space-x-4 group">
+                <div key={s.step || idx} className="relative flex items-start space-x-4 group">
                   {/* Step Node Icon */}
                   <div className={`relative z-10 w-12 h-12 rounded-xl flex items-center justify-center font-mono font-bold text-xs shrink-0 border transition-all ${
                     isSuccess 
@@ -156,7 +163,7 @@ export default function DecisionTrace() {
                   }`}>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                       <h4 className="text-xs font-bold text-white tracking-tight flex items-center gap-1.5">
-                        {s.title}
+                        {s.title || s.type?.replace(/_/g, ' ') || 'Decision Stage'}
                       </h4>
                       <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${
                         isSuccess ? 'bg-emerald-500/20 text-emerald-400' :
@@ -165,11 +172,11 @@ export default function DecisionTrace() {
                         isHighlight ? 'bg-sky-500/20 text-sky-300' :
                         'bg-slate-800 text-slate-300'
                       }`}>
-                        {s.value}
+                        {s.value || s.status || s.type || 'N/A'}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-1 leading-normal">
-                      {s.detail}
+                      {s.detail || s.data?.reason || s.data?.action || 'Audit trail entry'}
                     </p>
                   </div>
                 </div>
