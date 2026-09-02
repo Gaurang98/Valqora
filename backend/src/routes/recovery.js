@@ -4,6 +4,7 @@ const {
   getRecoveryMetricsHandler,
   getPerformanceAnalyticsHandler,
   getRecoveryInsightsHandler,
+  getRecoveryIntelligenceHandler,
   getRecoveryTraceHandler,
   createHumanReviewHandler,
   listHumanReviewsHandler,
@@ -17,6 +18,7 @@ router.post('/execute/:opportunityId', executeRecoveryHandler);
 router.get('/metrics', getRecoveryMetricsHandler);
 router.get('/analytics', getPerformanceAnalyticsHandler);
 router.get('/insights', getRecoveryInsightsHandler);
+router.get('/intelligence', getRecoveryIntelligenceHandler);
 router.get('/:opportunityId/trace', getRecoveryTraceHandler);
 router.post('/reviews/:opportunityId', createHumanReviewHandler);
 router.get('/reviews', listHumanReviewsHandler);

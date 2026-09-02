@@ -76,6 +76,13 @@ function validateInsights(payload) {
   return payload;
 }
 
+function validateIntelligence(payload) {
+  const intelligence = payload?.intelligence;
+  if (!payload?.success || !intelligence || typeof intelligence !== 'object') return null;
+  if (!intelligence.insights || typeof intelligence.insights !== 'object') return null;
+  return intelligence;
+}
+
 function EmptyState({ title = 'No data available', detail = 'The backend has not returned records for this view.' }) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-6 text-center">
@@ -94,6 +101,60 @@ function LoadingState() {
     <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-5 text-xs text-slate-400" aria-live="polite">
       <Activity className="h-4 w-4 animate-pulse text-sky-400" />
       Loading backend analytics...
+    </div>
+  );
+}
+
+function RecoveryIntelligenceSection({ state }) {
+  if (state.loading) return <LoadingState />;
+  if (state.error) return <ErrorState title="Recovery intelligence unavailable" />;
+
+  const intelligence = state.data?.insights;
+  if (!intelligence) return <EmptyState title="No recovery intelligence yet" detail="Historical observations will appear after valid learning records are available." />;
+
+  const successHighlight = intelligence.highlights?.highestObservedSuccessRate;
+  const revenueHighlight = intelligence.highlights?.highestObservedRecoveredRevenue;
+  const insufficientEvidence = Array.isArray(intelligence.insufficientEvidence) ? intelligence.insufficientEvidence : [];
+  const observations = Array.isArray(intelligence.observations) ? intelligence.observations : [];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Highest Observed Recovery Rate</p>
+          <p className="mt-2 text-sm font-bold text-emerald-300">{successHighlight?.action || 'Insufficient data'}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {successHighlight ? `${formatPercent(successHighlight.successRate, false)} across ${safeNumber(successHighlight.sampleSize, 0)} outcomes` : 'No action has enough historical evidence.'}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Highest Observed Recovered Revenue</p>
+          <p className="mt-2 text-sm font-bold text-emerald-300">{revenueHighlight?.action || 'Insufficient data'}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {revenueHighlight ? `${formatCurrency(revenueHighlight.recoveredRevenue)} across ${safeNumber(revenueHighlight.sampleSize, 0)} outcomes` : 'No action has enough historical evidence.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <div className="mb-3 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-sky-400" /><h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Prediction Quality</h4></div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div><p className="text-slate-500">Brier Score</p><p className="mt-1 font-mono font-semibold text-amber-300">{intelligence.predictionQuality?.brierScore === null ? 'Unavailable' : safeNumber(intelligence.predictionQuality?.brierScore, 'Unavailable')}</p></div>
+            <div><p className="text-slate-500">Calibration Error</p><p className="mt-1 font-mono font-semibold text-amber-300">{formatPercent(intelligence.predictionQuality?.calibrationError)}</p></div>
+            <div><p className="text-slate-500">Mean Predicted</p><p className="mt-1 font-mono font-semibold text-sky-300">{formatPercent(intelligence.predictionQuality?.meanPredictedProbability)}</p></div>
+            <div><p className="text-slate-500">Actual Recovery</p><p className="mt-1 font-mono font-semibold text-emerald-300">{formatPercent(intelligence.predictionQuality?.actualRecoveryRate, false)}</p></div>
+          </div>
+          <p className="mt-4 border-t border-slate-800 pt-3 text-[11px] text-slate-500">{intelligence.predictionQuality?.observation || 'Prediction performance is being evaluated against verified recovery outcomes.'}</p>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <div className="mb-3 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-amber-300" /><h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Data Confidence</h4></div>
+          {insufficientEvidence.length === 0 ? <p className="text-xs text-slate-400">No insufficient-evidence areas were returned.</p> : <div className="space-y-2">{insufficientEvidence.slice(0, 5).map((item) => <div key={`${item.category}-${item.context}`} className="flex items-center justify-between gap-3 border-b border-slate-800/70 pb-2 text-xs"><span className="text-slate-300">{item.context || 'Unavailable'}</span><span className="font-mono text-slate-500">{safeNumber(item.sampleSize, 0)} sample{safeNumber(item.sampleSize, 0) === 1 ? '' : 's'} • {item.confidenceLevel || 'Unavailable'}</span></div>)}</div>}
+        </div>
+      </div>
+
+      {observations.length > 0 && <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"><p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Observed Patterns</p><ul className="space-y-2 text-xs text-slate-300">{observations.map((observation) => <li key={observation} className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-sky-400" />{observation}</li>)}</ul></div>}
     </div>
   );
 }
@@ -149,6 +210,7 @@ function InsightTable({ items, title }) {
 export default function LearningLoop() {
   const [analyticsState, setAnalyticsState] = useState({ loading: true, data: null, error: false });
   const [insightsState, setInsightsState] = useState({ loading: true, data: null, error: false });
+  const [intelligenceState, setIntelligenceState] = useState({ loading: true, data: null, error: false });
 
   useEffect(() => {
     let active = true;
@@ -167,6 +229,7 @@ export default function LearningLoop() {
 
     load('/api/recovery/analytics', validateAnalytics, setAnalyticsState);
     load('/api/recovery/insights', validateInsights, setInsightsState);
+    load('/api/recovery/intelligence', validateIntelligence, setIntelligenceState);
 
     return () => {
       active = false;
@@ -175,6 +238,7 @@ export default function LearningLoop() {
 
   const analytics = analyticsState.data;
   const insightData = insightsState.data;
+  const intelligence = intelligenceState.data?.insights;
   const insightCount = insightData
     ? insightGroups.reduce((count, [key]) => count + insightData.insights[key].length, 0)
     : 0;
@@ -237,6 +301,8 @@ export default function LearningLoop() {
       )}
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/75 p-5 shadow-sm sm:p-6"><div className="mb-4 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-amber-300" /><div><h3 className="text-sm font-semibold text-white">What Worked?</h3><p className="text-[11px] text-slate-500">Observed Outcome Insights from historical verified results.</p></div></div><span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase text-amber-300">Informational</span></div>{insightsState.loading ? <LoadingState /> : insightsState.error ? <ErrorState title="Recovery insights unavailable" /> : insightData?.status === 'NO_DATA' || insightCount === 0 ? <EmptyState title="No observed outcome insights yet" detail="Insights will appear after enough verified outcomes are collected." /> : <div className="space-y-5">{insightGroups.map(([key, label]) => <div key={key}><div className="mb-2 flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5 text-sky-400" /><h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</h4></div><InsightTable items={insightData.insights[key]} title={label} /></div>)}</div>}<p className="mt-5 border-t border-slate-800 pt-4 text-[11px] text-slate-500">These insights describe historical outcomes only. They do not override the Policy Engine, change recommendations, or trigger recovery.</p></section>
+
+      <section className="rounded-xl border border-sky-500/20 bg-slate-900/75 p-5 shadow-sm sm:p-6"><div className="mb-4 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-sky-300" /><div><h3 className="text-sm font-semibold text-white">Recovery Intelligence</h3><p className="text-[11px] text-slate-500">Business-level observations composed from Performance Analytics and What Worked.</p></div></div><span className="rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase text-sky-300">Read-only</span></div><RecoveryIntelligenceSection state={intelligenceState} /><p className="mt-5 border-t border-slate-800 pt-4 text-[11px] text-slate-500">Recovery Intelligence supports human understanding only. It does not change policy, predictions, action selection, or recovery execution.</p></section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-950/60 p-5 sm:p-6"><div className="mb-5 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-400" /><h3 className="text-sm font-semibold text-white">How Valqora Learns</h3></div><div className="grid grid-cols-1 gap-4 text-xs text-slate-300 md:grid-cols-2 xl:grid-cols-4">{[
         ['Prediction', 'The model estimates recovery probability.'],
