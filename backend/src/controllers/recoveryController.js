@@ -19,6 +19,7 @@ const { buildDecisionTrace } = require('../services/decisionTraceService');
 const { recordLearningOutcome } = require('../services/learningDatasetService');
 const LearningRecord = require('../models/LearningRecord');
 const { calculatePerformanceAnalytics } = require('../services/performanceAnalyticsService');
+const { calculateRecoveryInsights } = require('../services/recoveryInsightsService');
 
 function buildPolicyInput(decision, context) {
   const failureReason = context?.failure?.reason || context?.failure_reason || 'UNKNOWN';
@@ -323,6 +324,21 @@ exports.getPerformanceAnalyticsHandler = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Unable to calculate performance analytics.',
+    });
+  }
+};
+
+exports.getRecoveryInsightsHandler = async (req, res) => {
+  try {
+    const records = await LearningRecord.find().lean();
+    const insights = calculateRecoveryInsights(records);
+
+    return res.status(200).json({ success: true, ...insights });
+  } catch (err) {
+    console.error('[getRecoveryInsightsHandler] Error:', err.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to calculate recovery insights.',
     });
   }
 };

@@ -7,6 +7,7 @@ import Opportunities from './pages/Opportunities';
 import HumanReview from './pages/HumanReview';
 import DecisionTrace from './pages/DecisionTrace';
 import AuditLogs from './pages/AuditLogs';
+import LearningLoop from './pages/LearningLoop';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/human-review" element={<HumanReview />} />
           <Route path="/decisions" element={<DecisionTrace />} />
           <Route path="/audit" element={<AuditLogs />} />
+          <Route path="/learning-loop" element={<LearningLoop />} />
           {/* Catch-all redirect to Dashboard */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

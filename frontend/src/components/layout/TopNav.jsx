@@ -19,7 +19,8 @@ const routeTitleMap = {
   '/investigations': { title: 'AI Root Cause Investigation', subtitle: 'Automated telemetry analysis and actionable intervention strategies' },
   '/opportunities': { title: 'Recovery Opportunity Pipeline', subtitle: 'Prioritized queue of addressable failed transactions and dunning targets' },
   '/decisions': { title: 'Autonomous Decision Trace', subtitle: 'Deterministic explainability log of ML inference, policies, and actions' },
-  '/audit': { title: 'Enterprise Audit Trail', subtitle: 'Immutable compliance log of system events, policies, and actor overrides' }
+  '/audit': { title: 'Enterprise Audit Trail', subtitle: 'Immutable compliance log of system events, policies, and actor overrides' },
+  '/learning-loop': { title: 'Learning Loop Analytics', subtitle: 'Read-only view of prediction performance, verified outcomes, and observed recovery patterns' }
 };
 
 export default function TopNav({ setMobileOpen }) {

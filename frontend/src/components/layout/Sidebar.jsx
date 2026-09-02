@@ -51,6 +51,12 @@ const navItems = [
     icon: ShieldCheck,
     badge: null
   },
+  {
+    name: 'Learning Loop',
+    path: '/learning-loop',
+    icon: Activity,
+    badge: null
+  },
 ];
 
 export default function Sidebar({ mobileOpen, setMobileOpen }) {
