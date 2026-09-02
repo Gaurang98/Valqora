@@ -17,6 +17,8 @@ const {
 const { normalizeOpportunityId } = require('./investigationController');
 const { buildDecisionTrace } = require('../services/decisionTraceService');
 const { recordLearningOutcome } = require('../services/learningDatasetService');
+const LearningRecord = require('../models/LearningRecord');
+const { calculatePerformanceAnalytics } = require('../services/performanceAnalyticsService');
 
 function buildPolicyInput(decision, context) {
   const failureReason = context?.failure?.reason || context?.failure_reason || 'UNKNOWN';
@@ -299,6 +301,28 @@ exports.getRecoveryMetricsHandler = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'An unexpected server error occurred while calculating recovery metrics',
+    });
+  }
+};
+
+exports.getPerformanceAnalyticsHandler = async (req, res) => {
+  try {
+    const records = await LearningRecord.find().lean();
+    const analytics = calculatePerformanceAnalytics(records, {
+      action: req.query?.action,
+      customer_type: req.query?.customer_type,
+      failure_reason: req.query?.failure_reason,
+      provider: req.query?.provider,
+      startDate: req.query?.startDate,
+      endDate: req.query?.endDate,
+    });
+
+    return res.status(200).json({ success: true, analytics });
+  } catch (err) {
+    console.error('[getPerformanceAnalyticsHandler] Error:', err.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to calculate performance analytics.',
     });
   }
 };

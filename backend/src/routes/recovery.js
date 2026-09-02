@@ -2,6 +2,7 @@ const express = require('express');
 const {
   executeRecoveryHandler,
   getRecoveryMetricsHandler,
+  getPerformanceAnalyticsHandler,
   getRecoveryTraceHandler,
   createHumanReviewHandler,
   listHumanReviewsHandler,
@@ -13,6 +14,7 @@ const router = express.Router();
 
 router.post('/execute/:opportunityId', executeRecoveryHandler);
 router.get('/metrics', getRecoveryMetricsHandler);
+router.get('/analytics', getPerformanceAnalyticsHandler);
 router.get('/:opportunityId/trace', getRecoveryTraceHandler);
 router.post('/reviews/:opportunityId', createHumanReviewHandler);
 router.get('/reviews', listHumanReviewsHandler);
