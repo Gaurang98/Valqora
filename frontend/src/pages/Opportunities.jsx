@@ -17,6 +17,7 @@ import {
 import { mockAllOpportunities, mockKPIs } from '../data/mockData';
 import { PriorityBadge, StatusBadge, ProbabilityBadge } from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
+import ActionComparison from '../components/opportunities/ActionComparison';
 
 const formatCurrency = (value) => {
   const numericValue = Number(value);
@@ -122,6 +123,9 @@ export default function Opportunities() {
   const [aiError, setAiError] = useState('');
   const [aiOpportunity, setAiOpportunity] = useState(null);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [actionEvaluation, setActionEvaluation] = useState(null);
+  const [actionEvaluationLoading, setActionEvaluationLoading] = useState(false);
+  const [actionEvaluationError, setActionEvaluationError] = useState('');
   const [decisionTraceOpen, setDecisionTraceOpen] = useState(false);
 
   const failureReasons = useMemo(() => {
@@ -182,6 +186,9 @@ export default function Opportunities() {
     setAiOpportunity(opportunity);
     setAiInvestigation(null);
     setAiError('');
+    setActionEvaluation(null);
+    setActionEvaluationError('');
+    setActionEvaluationLoading(false);
     setDecisionTraceOpen(false);
 
     try {
@@ -208,9 +215,27 @@ export default function Opportunities() {
       setAiInvestigation(payload.investigation);
       setAiError('');
       setAiModalOpen(true);
+
+      setActionEvaluationLoading(true);
+      try {
+        const evaluationResponse = await fetch(`/api/opportunities/${encodeURIComponent(routeId)}/action-evaluation`);
+        const evaluationPayload = await evaluationResponse.json().catch(() => null);
+        if (!evaluationResponse.ok || !evaluationPayload?.data) {
+          throw new Error(evaluationPayload?.error || 'Action evaluation unavailable');
+        }
+        setActionEvaluation(evaluationPayload.data);
+        setActionEvaluationError('');
+      } catch (error) {
+        setActionEvaluation(null);
+        setActionEvaluationError(error?.message || 'Action evaluation unavailable');
+      } finally {
+        setActionEvaluationLoading(false);
+      }
     } catch (error) {
       setAiInvestigation(null);
       setAiError(error?.message || 'Unable to complete AI investigation. Please try again.');
+      setActionEvaluation(null);
+      setActionEvaluationError('');
       setAiModalOpen(true);
     } finally {
       setInvestigatingId(null);
@@ -222,6 +247,9 @@ export default function Opportunities() {
     setAiError('');
     setAiInvestigation(null);
     setAiOpportunity(null);
+    setActionEvaluation(null);
+    setActionEvaluationLoading(false);
+    setActionEvaluationError('');
     setDecisionTraceOpen(false);
   };
 
@@ -724,6 +752,12 @@ export default function Opportunities() {
                 </div>
               </div>
             </div>
+
+            <ActionComparison
+              evaluation={actionEvaluation}
+              loading={actionEvaluationLoading}
+              error={actionEvaluationError}
+            />
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
               <div className="flex items-center gap-2 text-white font-semibold">

@@ -1,5 +1,7 @@
 const Transaction = require('../models/Transaction');
 const { investigateOpportunity, investigateTransactionById } = require('../services/aiService');
+const { buildInvestigationContext } = require('../services/investigationService');
+const { evaluateActionCandidates } = require('../services/actionEvaluationService');
 
 const TEMPORARY_FAILURES = new Set(['BANK_TIMEOUT', 'PROVIDER_TIMEOUT', 'NETWORK_ERROR']);
 const PAYMENT_METHOD_FAILURES = new Set(['CARD_EXPIRED', 'PAYMENT_METHOD_EXPIRED', 'INVALID_CARD']);
@@ -145,5 +147,42 @@ exports.investigateOpportunityHandler = async (req, res) => {
     }
     console.error('[investigateOpportunityHandler] Error:', err.message);
     return res.status(500).json({ error: err.message || 'AI investigation failed' });
+  }
+};
+
+exports.getActionEvaluationHandler = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cleanTxnId = id && id.startsWith('OPP_') ? id.replace(/^OPP_/, '') : id;
+
+    if (!cleanTxnId) return res.status(400).json({ error: 'Opportunity ID is required' });
+
+    const transaction = await Transaction.findOne({ transaction_id: cleanTxnId })
+      .select('transaction_id amount status failure_reason retry_count customer_type customer_lifetime_value previous_failures provider timestamp')
+      .lean();
+
+    if (!transaction) return res.status(404).json({ error: 'Opportunity not found' });
+    if (transaction.status === 'SUCCESS') {
+      return res.status(400).json({ error: 'Successful transactions cannot be evaluated for recovery' });
+    }
+
+    const context = buildInvestigationContext(transaction);
+    const evaluation = evaluateActionCandidates({
+      opportunityId: id,
+      amount: transaction.amount,
+      status: transaction.status,
+      failureReason: transaction.failure_reason,
+      retryCount: transaction.retry_count,
+      customerType: transaction.customer_type,
+      recoveryProbability: context.mlPrediction?.isAvailable
+        ? context.mlPrediction.recoveryProbability
+        : undefined,
+      aiRecommendation: context.aiDecision?.recommendedAction,
+    });
+
+    return res.status(200).json({ data: evaluation });
+  } catch (err) {
+    console.error('[getActionEvaluationHandler] Error:', err.message);
+    return res.status(500).json({ error: 'Unable to evaluate recovery actions.' });
   }
 };
