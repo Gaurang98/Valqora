@@ -21,6 +21,7 @@ const LearningRecord = require('../models/LearningRecord');
 const { calculatePerformanceAnalytics } = require('../services/performanceAnalyticsService');
 const { calculateRecoveryInsights } = require('../services/recoveryInsightsService');
 const { calculateRecoveryIntelligence } = require('../services/recoveryIntelligenceService');
+const { calculateModelImprovementReport } = require('../services/modelImprovementService');
 
 function buildPolicyInput(decision, context) {
   const failureReason = context?.failure?.reason || context?.failure_reason || 'UNKNOWN';
@@ -357,6 +358,28 @@ exports.getRecoveryIntelligenceHandler = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Unable to calculate recovery intelligence.',
+    });
+  }
+};
+
+exports.getModelImprovementHandler = async (req, res) => {
+  try {
+    const records = await LearningRecord.find().lean();
+    const performanceAnalytics = calculatePerformanceAnalytics(records);
+    const recoveryInsights = calculateRecoveryInsights(records);
+    const recoveryIntelligence = calculateRecoveryIntelligence({ performanceAnalytics, recoveryInsights });
+    const report = calculateModelImprovementReport({
+      performanceAnalytics,
+      recoveryInsights,
+      recoveryIntelligence,
+    });
+
+    return res.status(200).json({ success: true, report });
+  } catch (err) {
+    console.error('[getModelImprovementHandler] Error:', err.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to calculate model improvement feedback.',
     });
   }
 };

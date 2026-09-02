@@ -83,6 +83,13 @@ function validateIntelligence(payload) {
   return intelligence;
 }
 
+function validateImprovementReport(payload) {
+  const report = payload?.report;
+  if (!payload?.success || !report || typeof report !== 'object') return null;
+  if (!report.summary || !report.predictionPerformance || !Array.isArray(report.futureImprovementAreas)) return null;
+  return report;
+}
+
 function EmptyState({ title = 'No data available', detail = 'The backend has not returned records for this view.' }) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-6 text-center">
@@ -159,6 +166,35 @@ function RecoveryIntelligenceSection({ state }) {
   );
 }
 
+function ModelImprovementSection({ state }) {
+  if (state.loading) return <LoadingState />;
+  if (state.error) return <ErrorState title="Model improvement feedback unavailable" />;
+  const report = state.data;
+  if (!report || report.status === 'NO_DATA') return <EmptyState title="No model improvement evidence yet" detail="Verified historical outcomes are needed before feedback can be prepared." />;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-xs text-amber-100">
+        <p className="font-semibold text-amber-200">Evidence for future model improvement</p>
+        <p className="mt-1">{report.boundary}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div><p className="text-[10px] uppercase text-slate-500">Valid Records</p><p className="mt-1 font-mono text-lg font-semibold text-white">{safeNumber(report.dataQuality?.validRecords, 0)}</p></div>
+        <div><p className="text-[10px] uppercase text-slate-500">Invalid Records</p><p className="mt-1 font-mono text-lg font-semibold text-amber-300">{safeNumber(report.dataQuality?.invalidRecords, 0)}</p></div>
+        <div><p className="text-[10px] uppercase text-slate-500">Verified Recoveries</p><p className="mt-1 font-mono text-lg font-semibold text-emerald-300">{safeNumber(report.dataQuality?.verifiedRecoveries, 0)}</p></div>
+        <div><p className="text-[10px] uppercase text-slate-500">Review Areas</p><p className="mt-1 font-mono text-lg font-semibold text-sky-300">{safeNumber(report.futureImprovementAreas?.length, 0)}</p></div>
+      </div>
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+        <div className="mb-3 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-sky-400" /><h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Prediction Feedback</h4></div>
+        <div className="grid grid-cols-2 gap-3 text-xs lg:grid-cols-5"><div><p className="text-slate-500">Sample</p><p className="mt-1 font-mono text-slate-200">{safeNumber(report.predictionPerformance?.sampleSize, 0)}</p></div><div><p className="text-slate-500">Mean Predicted</p><p className="mt-1 font-mono text-sky-300">{formatPercent(report.predictionPerformance?.meanPredictedProbability)}</p></div><div><p className="text-slate-500">Actual Rate</p><p className="mt-1 font-mono text-emerald-300">{formatPercent(report.predictionPerformance?.actualRecoveryRate, false)}</p></div><div><p className="text-slate-500">Brier Score</p><p className="mt-1 font-mono text-amber-300">{report.predictionPerformance?.brierScore === null ? 'Unavailable' : safeNumber(report.predictionPerformance?.brierScore, 'Unavailable')}</p></div><div><p className="text-slate-500">Calibration Error</p><p className="mt-1 font-mono text-amber-300">{formatPercent(report.predictionPerformance?.calibrationError)}</p></div></div>
+        <p className="mt-3 border-t border-slate-800 pt-3 text-[11px] text-slate-500">{report.predictionPerformance?.observation || 'Prediction performance can be evaluated using the verified outcome dataset.'}</p>
+      </div>
+      {report.calibrationIssues?.length > 0 && <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Calibration Review Areas</p><div className="space-y-2">{report.calibrationIssues.map((item) => <div key={item.predictionRange} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/70 pb-2 text-xs"><span className="font-mono text-slate-200">{item.predictionRange}</span><span className="text-slate-400">{safeNumber(item.sampleSize, 0)} samples • error {formatPercent(item.calibrationError)} • {item.evidenceLevel || 'Unavailable'}</span></div>)}</div></div>}
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Future Improvement Areas</p>{report.futureImprovementAreas.length === 0 ? <p className="text-xs text-slate-500">No additional areas were identified from the available evidence.</p> : <div className="space-y-3">{report.futureImprovementAreas.slice(0, 8).map((item) => <div key={item.area} className="border-l border-amber-400/40 pl-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold text-slate-200">{item.area}</p><span className="font-mono text-[10px] uppercase text-amber-300">{item.evidenceLevel || 'Unavailable'}</span></div><p className="mt-1 text-[11px] text-slate-400">{item.reason}</p><p className="mt-1 text-[10px] text-slate-500">{item.supportingEvidence}</p></div>)}</div>}</div>
+    </div>
+  );
+}
+
 function InsightTable({ items, title }) {
   if (items.length === 0) return <EmptyState title={`No ${title.toLowerCase()} insights`} />;
 
@@ -211,6 +247,7 @@ export default function LearningLoop() {
   const [analyticsState, setAnalyticsState] = useState({ loading: true, data: null, error: false });
   const [insightsState, setInsightsState] = useState({ loading: true, data: null, error: false });
   const [intelligenceState, setIntelligenceState] = useState({ loading: true, data: null, error: false });
+  const [improvementState, setImprovementState] = useState({ loading: true, data: null, error: false });
 
   useEffect(() => {
     let active = true;
@@ -230,6 +267,7 @@ export default function LearningLoop() {
     load('/api/recovery/analytics', validateAnalytics, setAnalyticsState);
     load('/api/recovery/insights', validateInsights, setInsightsState);
     load('/api/recovery/intelligence', validateIntelligence, setIntelligenceState);
+    load('/api/recovery/model-improvement', validateImprovementReport, setImprovementState);
 
     return () => {
       active = false;
@@ -303,6 +341,8 @@ export default function LearningLoop() {
       <section className="rounded-xl border border-slate-800 bg-slate-900/75 p-5 shadow-sm sm:p-6"><div className="mb-4 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-amber-300" /><div><h3 className="text-sm font-semibold text-white">What Worked?</h3><p className="text-[11px] text-slate-500">Observed Outcome Insights from historical verified results.</p></div></div><span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase text-amber-300">Informational</span></div>{insightsState.loading ? <LoadingState /> : insightsState.error ? <ErrorState title="Recovery insights unavailable" /> : insightData?.status === 'NO_DATA' || insightCount === 0 ? <EmptyState title="No observed outcome insights yet" detail="Insights will appear after enough verified outcomes are collected." /> : <div className="space-y-5">{insightGroups.map(([key, label]) => <div key={key}><div className="mb-2 flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5 text-sky-400" /><h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</h4></div><InsightTable items={insightData.insights[key]} title={label} /></div>)}</div>}<p className="mt-5 border-t border-slate-800 pt-4 text-[11px] text-slate-500">These insights describe historical outcomes only. They do not override the Policy Engine, change recommendations, or trigger recovery.</p></section>
 
       <section className="rounded-xl border border-sky-500/20 bg-slate-900/75 p-5 shadow-sm sm:p-6"><div className="mb-4 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-sky-300" /><div><h3 className="text-sm font-semibold text-white">Recovery Intelligence</h3><p className="text-[11px] text-slate-500">Business-level observations composed from Performance Analytics and What Worked.</p></div></div><span className="rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase text-sky-300">Read-only</span></div><RecoveryIntelligenceSection state={intelligenceState} /><p className="mt-5 border-t border-slate-800 pt-4 text-[11px] text-slate-500">Recovery Intelligence supports human understanding only. It does not change policy, predictions, action selection, or recovery execution.</p></section>
+
+      <section className="rounded-xl border border-amber-500/20 bg-slate-900/75 p-5 shadow-sm sm:p-6"><div className="mb-4 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><History className="h-4 w-4 text-amber-300" /><div><h3 className="text-sm font-semibold text-white">Model Improvement Feedback</h3><p className="text-[11px] text-slate-500">Structured evidence for future model improvement, based on verified outcomes.</p></div></div><span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase text-amber-300">No automatic changes</span></div><ModelImprovementSection state={improvementState} /></section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-950/60 p-5 sm:p-6"><div className="mb-5 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-400" /><h3 className="text-sm font-semibold text-white">How Valqora Learns</h3></div><div className="grid grid-cols-1 gap-4 text-xs text-slate-300 md:grid-cols-2 xl:grid-cols-4">{[
         ['Prediction', 'The model estimates recovery probability.'],
