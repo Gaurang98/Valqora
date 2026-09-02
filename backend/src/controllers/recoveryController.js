@@ -16,6 +16,7 @@ const {
 } = require('../services/humanReviewService');
 const { normalizeOpportunityId } = require('./investigationController');
 const { buildDecisionTrace } = require('../services/decisionTraceService');
+const { recordLearningOutcome } = require('../services/learningDatasetService');
 
 function buildPolicyInput(decision, context) {
   const failureReason = context?.failure?.reason || context?.failure_reason || 'UNKNOWN';
@@ -30,6 +31,38 @@ function buildPolicyInput(decision, context) {
     aiRecommendedAction: decision?.recommendedAction || 'WAIT',
     aiConfidence: Number(decision?.confidence ?? 0),
   };
+}
+
+function getLearningResult(verification) {
+  if (verification?.verified === true) return 'RECOVERED';
+  if (verification?.status === 'BLOCKED') return 'BLOCKED';
+  if (verification?.status === 'FAILED') return 'FAILED';
+  return 'NOT_RECOVERED';
+}
+
+async function recordRecoveryLearningData({ investigationResult, policy, verification }) {
+  const context = investigationResult.context || {};
+  const decision = investigationResult.decision || {};
+  const recoveryAmount = Number(verification?.amountRecovered ?? 0);
+
+  try {
+    await recordLearningOutcome({
+      opportunityId: investigationResult.opportunityId || context.opportunityId,
+      action: policy?.action || decision.recommendedAction,
+      predictedProbability: context.mlPrediction?.recoveryProbability,
+      amount: context.amount,
+      customerType: context.customer?.customerType,
+      failureReason: context.failure?.reason,
+      provider: context.provider?.name,
+      retryCount: context.failure?.retryCount,
+      actualResult: getLearningResult(verification),
+      actualRecoveredAmount: verification?.verified === true ? recoveryAmount : 0,
+      verified: verification?.verified === true,
+      timestamp: context.timestamp,
+    });
+  } catch (error) {
+    console.error('[recordRecoveryLearningData] Persistence failed:', error.message);
+  }
 }
 
 exports.executeRecoveryHandler = async (req, res) => {
@@ -55,6 +88,17 @@ exports.executeRecoveryHandler = async (req, res) => {
     const policy = evaluatePolicy(policyInput);
 
     if (policy.decision === 'BLOCKED') {
+      const verification = verifyRecovery({
+        transaction: {
+          status: investigationResult.context?.status || 'FAILED',
+          amount: investigationResult.context?.amount,
+        },
+        action: policy.action,
+        policyDecision: policy,
+      });
+
+      await recordRecoveryLearningData({ investigationResult, policy, verification });
+
       return res.status(200).json({
         success: true,
         simulation: {
@@ -65,15 +109,7 @@ exports.executeRecoveryHandler = async (req, res) => {
           amountRecovered: 0,
           message: 'Recovery action blocked by policy',
         },
-        verification: {
-          verified: false,
-          status: 'BLOCKED',
-          action: 'BLOCKED',
-          previousStatus: String(investigationResult.context?.status || 'FAILED').toUpperCase(),
-          currentStatus: String(investigationResult.context?.status || 'FAILED').toUpperCase(),
-          amountRecovered: 0,
-          message: 'Recovery action blocked by policy',
-        },
+        verification,
         policy,
       });
     }
@@ -100,6 +136,8 @@ exports.executeRecoveryHandler = async (req, res) => {
       simulation,
       policyDecision: policy,
     });
+
+    await recordRecoveryLearningData({ investigationResult, policy, verification });
 
     return res.status(200).json({
       success: true,
