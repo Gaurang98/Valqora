@@ -22,6 +22,7 @@ const { calculatePerformanceAnalytics } = require('../services/performanceAnalyt
 const { calculateRecoveryInsights } = require('../services/recoveryInsightsService');
 const { calculateRecoveryIntelligence } = require('../services/recoveryIntelligenceService');
 const { calculateModelImprovementReport } = require('../services/modelImprovementService');
+const { evaluateActionCandidates } = require('../services/actionEvaluationService');
 
 function buildPolicyInput(decision, context) {
   const failureReason = context?.failure?.reason || context?.failure_reason || 'UNKNOWN';
@@ -37,6 +38,31 @@ function buildPolicyInput(decision, context) {
     aiConfidence: Number(decision?.confidence ?? 0),
   };
 }
+
+function buildActionEvaluationInput(investigationResult) {
+  const context = investigationResult?.context || {};
+  const failure = context.failure || {};
+  const customer = context.customer || {};
+  const mlPrediction = context.mlPrediction || {};
+
+  return {
+    opportunityId: context.opportunityId || investigationResult?.opportunityId,
+    amount: context.amount,
+    status: context.status,
+    failureReason: failure.reason,
+    retryCount: failure.retryCount,
+    customerType: customer.customerType,
+    recoveryProbability: mlPrediction.isAvailable ? mlPrediction.recoveryProbability : undefined,
+    aiRecommendation: investigationResult?.decision?.recommendedAction,
+  };
+}
+
+function evaluateOpportunityActions(investigationResult) {
+  return evaluateActionCandidates(buildActionEvaluationInput(investigationResult));
+}
+
+exports.buildActionEvaluationInput = buildActionEvaluationInput;
+exports.evaluateOpportunityActions = evaluateOpportunityActions;
 
 function getLearningResult(verification) {
   if (verification?.verified === true) return 'RECOVERED';
@@ -89,7 +115,11 @@ exports.executeRecoveryHandler = async (req, res) => {
     }
 
     const investigationResult = await investigateTransactionById(normalizedTxnId);
-    const policyInput = buildPolicyInput(investigationResult.decision, investigationResult.context);
+    const optimizerRecommendation = evaluateOpportunityActions(investigationResult);
+    const policyInput = buildPolicyInput(
+      { ...investigationResult.decision, recommendedAction: optimizerRecommendation.bestAction },
+      investigationResult.context
+    );
     const policy = evaluatePolicy(policyInput);
 
     if (policy.decision === 'BLOCKED') {
@@ -116,6 +146,10 @@ exports.executeRecoveryHandler = async (req, res) => {
         },
         verification,
         policy,
+        aiRecommendation: investigationResult.decision?.recommendedAction || 'WAIT',
+        optimizerRecommendation,
+        policyDecision: policy,
+        finalAction: policy.decision === 'APPROVED' ? policy.action : policy.action,
       });
     }
 
@@ -180,7 +214,11 @@ exports.getRecoveryTraceHandler = async (req, res) => {
     const { listReviews } = require('../services/humanReviewService');
 
     const investigationResult = await investigateTransactionById(normalizedTxnId);
-    const policyInput = buildPolicyInput(investigationResult.decision, investigationResult.context);
+    const optimizerRecommendation = evaluateOpportunityActions(investigationResult);
+    const policyInput = buildPolicyInput(
+      { ...investigationResult.decision, recommendedAction: optimizerRecommendation.bestAction },
+      investigationResult.context
+    );
     const policy = evaluatePolicy(policyInput);
     const opportunityId = investigationResult.context?.opportunityId || normalizedTxnId;
     const transactionId = investigationResult.context?.transactionId || normalizedTxnId;
@@ -197,6 +235,7 @@ exports.getRecoveryTraceHandler = async (req, res) => {
         aiDecision: investigationResult.decision,
       },
       policy,
+      optimizerRecommendation,
       review,
       metrics: { revenueRecovered: 0 },
       riskDetected: 'Revenue risk detected for failed transaction review',

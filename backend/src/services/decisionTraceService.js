@@ -50,6 +50,7 @@ function buildDecisionTrace({
   transactionId = null,
   amount = 0,
   investigation = {},
+  optimizerRecommendation = null,
   policy = {},
   review = null,
   simulation = null,
@@ -131,6 +132,25 @@ function buildDecisionTrace({
       },
     })
   );
+
+  if (optimizerRecommendation && typeof optimizerRecommendation === 'object') {
+    events.push(
+      createTraceEvent({
+        step: 5,
+        type: 'REVENUE_OPTIMIZATION',
+        status: 'COMPLETED',
+        data: {
+          bestAction: optimizerRecommendation.bestAction || 'NO_ACTION',
+          bestExpectedRecovery: asSafeMoney(optimizerRecommendation.bestExpectedRecovery),
+          candidateCount: Array.isArray(optimizerRecommendation.candidates)
+            ? optimizerRecommendation.candidates.length
+            : 0,
+          reason: optimizerRecommendation.selectionReason || 'Candidate actions evaluated',
+          isRecommendationOnly: true,
+        },
+      })
+    );
+  }
 
   events.push(
     createTraceEvent({
